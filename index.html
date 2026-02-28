@@ -224,7 +224,7 @@ button, .nav-item, .role-btn, .mob-nav-item, .btn, select {
     <div class="input-group"><label>Username</label><input id="usr" type="text" placeholder="Enter username" onkeydown="if(event.key==='Enter')login()"/></div>
     <div class="input-group"><label>Password</label><input id="pwd" type="password" placeholder="Enter password" onkeydown="if(event.key==='Enter')login()"/></div>
     <button class="login-btn" type="button" onclick="login()">Sign In →</button>
-    <div class="login-hint">Owner: aparna / aparna123 &nbsp;|&nbsp; Employee: aniket / aniket123</div>
+
     <div class="login-err" id="login-err"></div>
   </div>
 </div>
@@ -295,7 +295,7 @@ button, .nav-item, .role-btn, .mob-nav-item, .btn, select {
         <div class="page-sub">All customer orders</div>
         <div class="card">
           <div class="card-header"><div class="card-title">Order List</div><button class="btn btn-gold" onclick="openM('add-order')">+ New Order</button></div>
-          <div class="table-wrap"><table><thead><tr><th>Order ID</th><th>Date</th><th>Customer</th><th>Tower</th><th>Flat</th><th>Items</th><th>Amount</th><th>Payment</th><th>Status</th><th>Action</th></tr></thead>
+          <div class="table-wrap"><table><thead><tr><th>Order ID</th><th>Date</th><th>Customer</th><th>Tower</th><th>Flat</th><th>Items</th><th>Amount</th><th>Payment</th><th>Status</th><th>Status Action</th><th>Delete</th></tr></thead>
           <tbody id="t-orders"></tbody></table></div>
         </div>
       </div>
@@ -332,7 +332,7 @@ button, .nav-item, .role-btn, .mob-nav-item, .btn, select {
         </div>
         <div class="card">
           <div class="card-header"><div class="card-title">Payment History</div></div>
-          <div class="table-wrap"><table><thead><tr><th>Date</th><th>Order ID</th><th>Customer</th><th>Tower</th><th>Flat</th><th>Amount</th><th>Method</th><th>Note</th></tr></thead>
+          <div class="table-wrap"><table><thead><tr><th>Date</th><th>Order ID</th><th>Customer</th><th>Tower</th><th>Flat</th><th>Amount</th><th>Method</th><th>Note</th><th>Action</th></tr></thead>
           <tbody id="t-payments"></tbody></table></div>
         </div>
       </div>
@@ -396,10 +396,11 @@ button, .nav-item, .role-btn, .mob-nav-item, .btn, select {
 
 <!-- MOBILE BOTTOM NAV -->
 <div id="mobile-nav">
-  <button class="mob-nav-item" id="mn-dashboard" onclick="navigate('dashboard')"><span class="mob-nav-icon">◈</span>Dashboard</button>
+  <button class="mob-nav-item" id="mn-dashboard" onclick="navigate('dashboard')"><span class="mob-nav-icon">◈</span>Dash</button>
   <button class="mob-nav-item" id="mn-products" onclick="navigate('products')"><span class="mob-nav-icon">▣</span>Products</button>
   <button class="mob-nav-item" id="mn-orders" onclick="navigate('orders')"><span class="mob-nav-icon">◫</span>Orders</button>
   <button class="mob-nav-item" id="mn-customers" onclick="navigate('customers')"><span class="mob-nav-icon">◉</span>Customers</button>
+  <button class="mob-nav-item" id="mn-payments" onclick="navigate('payments')"><span class="mob-nav-icon">◆</span>Payments</button>
 </div>
 
 <div id="toast"></div>
@@ -455,6 +456,11 @@ async function fsPatch(col, id, data) {
   });
   if (!r.ok) throw new Error(`PATCH ${col}/${id} failed: ${r.status} ${r.statusText}`);
   return fsDoc(await r.json());
+}
+
+async function fsDelete(col, id) {
+  const r = await fetch(`${BASE}/${col}/${id}`, { method: 'DELETE' });
+  if (!r.ok) throw new Error(`DELETE ${col}/${id} failed: ${r.status} ${r.statusText}`);
 }
 
 // Convert Firestore document to plain object
@@ -603,7 +609,7 @@ async function reload() {
 // ─ Nav ───────────────────────────────────────────────────────────
 function buildNav() {
   const items = S.role==='owner'
-    ? [{id:'dashboard',ic:'◈',lb:'Dashboard'},{id:'products',ic:'▣',lb:'Products & Inventory'},{id:'orders',ic:'◫',lb:'Orders'},{id:'customers',ic:'◉',lb:'Customers'}]
+    ? [{id:'dashboard',ic:'◈',lb:'Dashboard'},{id:'products',ic:'▣',lb:'Products & Inventory'},{id:'orders',ic:'◫',lb:'Orders'},{id:'customers',ic:'◉',lb:'Customers'},{id:'payments',ic:'◆',lb:'Record Payment'}]
     : [{id:'emp-orders',ic:'◫',lb:'Process Orders'},{id:'payments',ic:'◈',lb:'Record Payment'}];
   document.getElementById('sidenav').innerHTML =
     `<div class="nav-label">${S.role==='owner'?'Management':'My Tasks'}</div>`+
@@ -668,12 +674,23 @@ function rOrds() {
   document.getElementById('t-orders').innerHTML = S.orders.map(o=>{
     const c=gc(o.custId);
     const itLines=o.items?o.items.map(it=>`<div>${it.name} <span style="color:var(--muted)">×${it.qty}</span> <span style="color:var(--gold)">${inr(it.price*it.qty)}</span></div>`).join(''):(`<div>${gp(o.prodId).name} ×${o.qty||1}</div>`);
-    return `<tr><td>${o.orderNum||'—'}</td><td>${o.date||'—'}</td><td>${c.name}</td><td>${c.towerNo||'—'}</td><td>${c.flatNo||'—'}</td>
+    const isCancelled = o.status==='Cancelled';
+    return `<tr style="${isCancelled?'opacity:0.5;text-decoration:line-through;':''}">
+      <td>${o.orderNum||'—'}</td><td>${o.date||'—'}</td><td>${c.name}</td><td>${c.towerNo||'—'}</td><td>${c.flatNo||'—'}</td>
       <td style="min-width:160px">${itLines}</td><td>${inr(o.amount)}</td>
       <td>${pbadge(o.payment)}</td><td>${sbadge(o.status)}</td>
-      <td><select class="btn btn-out" style="padding:4px 7px;font-size:11px;" onchange="updStatus('${o.id}',this.value)">
-        ${['Pending','Processing','Completed','Cancelled'].map(s=>`<option${s===o.status?' selected':''}>${s}</option>`).join('')}
-      </select></td></tr>`;
+      <td>${isCancelled ? '<span style="color:var(--muted);font-size:11px;">Cancelled</span>' :
+        `<select class="btn btn-out" style="padding:4px 7px;font-size:11px;" onchange="updStatus('${o.id}',this.value)">
+          ${['Pending','Processing','Completed','Cancelled'].map(s=>`<option${s===o.status?' selected':''}>${s}</option>`).join('')}
+        </select>`}
+      </td>
+      <td>
+        ${isCancelled
+          ? `<button class="btn btn-out" style="font-size:10px;padding:4px 8px;color:#e74c3c;border-color:#e74c3c;" onclick="deleteOrder('${o.id}')">🗑 Delete</button>`
+          : `<button class="btn btn-out" style="font-size:10px;padding:4px 8px;color:#e74c3c;" onclick="cancelOrder('${o.id}','${o.orderNum||o.id}')">✕ Cancel</button>`
+        }
+      </td>
+    </tr>`;
   }).join('')||`<tr class="empty-row"><td colspan="10">No orders yet</td></tr>`;
 }
 
@@ -716,9 +733,23 @@ function rPays() {
   document.getElementById('pay-ord').innerHTML=unpaid.length>0
     ? unpaid.map(o=>`<option value="${o.id}">${o.orderNum||o.id.slice(-5)} — ${gc(o.custId).name} (${inr(o.amount)})</option>`).join('')
     : `<option value="">— All orders paid —</option>`;
+  const isOwner = S.role==='owner';
   document.getElementById('t-payments').innerHTML=S.payments.map(p=>
-    `<tr><td>${p.date||'—'}</td><td>${p.orderNum||'—'}</td><td>${p.customer||'—'}</td><td>${p.towerNo||'—'}</td><td>${p.flatNo||'—'}</td><td style="color:var(--gold)">${inr(p.amount)}</td><td>${p.method||'—'}</td><td>${p.note||'—'}</td></tr>`
-  ).join('')||`<tr class="empty-row"><td colspan="8">No payments recorded yet</td></tr>`;
+    `<tr>
+      <td>${p.date||'—'}</td>
+      <td>${p.orderNum||'—'}</td>
+      <td>${p.customer||'—'}</td>
+      <td>${p.towerNo||'—'}</td>
+      <td>${p.flatNo||'—'}</td>
+      <td style="color:var(--gold)">${inr(p.amount)}</td>
+      <td>${p.method||'—'}</td>
+      <td>${p.note||'—'}</td>
+      <td>${isOwner
+        ? `<button class="btn btn-out" style="font-size:10px;padding:4px 8px;color:#e74c3c;" onclick="deletePayment('${p.id}','${p.orderId}',${p.amount})">🗑 Delete</button>`
+        : '—'
+      }</td>
+    </tr>`
+  ).join('')||`<tr class="empty-row"><td colspan="9">No payments recorded yet</td></tr>`;
 }
 
 // ─ Actions ───────────────────────────────────────────────────────
@@ -734,6 +765,43 @@ async function updStatus(id, status) {
   busy(false);
 }
 window.updStatus = updStatus;
+
+async function cancelOrder(id, orderNum) {
+  if(!confirm(`Cancel order ${orderNum}? Stock will be restored.`)) return;
+  const ord = S.orders.find(o=>o.id===id);
+  if(!ord) return;
+  busy(true);
+  try {
+    // Restore stock for each item
+    if(ord.items && ord.items.length>0) {
+      await Promise.all(ord.items.map(it=>{
+        const localProd = S.products.find(p=>p.id===it.prodId);
+        const newStock  = (localProd?localProd.stock:0) + it.qty;
+        if(localProd) localProd.stock = newStock;
+        return fsPatch('products', it.prodId, {stock: newStock});
+      }));
+    }
+    await fsPatch('orders', id, {status:'Cancelled'});
+    ord.status = 'Cancelled';
+    renderCur();
+    toast('Order cancelled — stock restored');
+  } catch(e) { toast(e.message,'err'); }
+  busy(false);
+}
+window.cancelOrder = cancelOrder;
+
+async function deleteOrder(id) {
+  if(!confirm('Permanently delete this cancelled order? This cannot be undone.')) return;
+  busy(true);
+  try {
+    await fsDelete('orders', id);
+    S.orders = S.orders.filter(o=>o.id!==id);
+    renderCur();
+    toast('Order deleted');
+  } catch(e) { toast(e.message,'err'); }
+  busy(false);
+}
+window.deleteOrder = deleteOrder;
 
 function editStock(id, cur) {
   const v = prompt(`Update stock (current: ${cur}):`, cur);
@@ -776,6 +844,27 @@ async function recPayment() {
   busy(false);
 }
 window.recPayment = recPayment;
+
+async function deletePayment(payId, orderId, amount) {
+  if(!confirm('Delete this payment entry? The order payment status will be updated.')) return;
+  busy(true);
+  try {
+    await fsDelete('payments', payId);
+    S.payments = S.payments.filter(p=>p.id!==payId);
+    // Recalculate payment status for the linked order
+    const ord = S.orders.find(o=>o.id===orderId);
+    if(ord) {
+      const remaining = S.payments.filter(p=>p.orderId===orderId).reduce((a,p)=>a+(p.amount||0),0);
+      const newStatus = remaining<=0 ? 'Unpaid' : remaining>=ord.amount ? 'Paid' : 'Partial';
+      await fsPatch('orders', orderId, {payment: newStatus});
+      ord.payment = newStatus;
+    }
+    renderCur();
+    toast('Payment deleted');
+  } catch(e) { toast(e.message,'err'); }
+  busy(false);
+}
+window.deletePayment = deletePayment;
 
 async function addProduct() {
   const name=document.getElementById('np-name').value.trim();
