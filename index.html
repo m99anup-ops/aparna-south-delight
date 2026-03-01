@@ -284,7 +284,7 @@ button, .nav-item, .role-btn, .mob-nav-item, .btn, select {
         </div>
         <div class="card">
           <div class="card-header"><div class="card-title">All Customers</div><button class="btn btn-gold" onclick="openM('add-customer')">+ Add Customer</button></div>
-          <div class="table-wrap"><table><thead><tr><th>Name</th><th>Tower No</th><th>Flat No</th><th>Phone</th><th>Email</th><th>Orders</th><th>Billed</th><th>Paid</th><th>Outstanding</th></tr></thead>
+          <div class="table-wrap"><table><thead><tr><th>Name</th><th>Tower No</th><th>Flat No</th><th>Phone</th><th>Email</th><th>Orders</th><th>Billed</th><th>Paid</th><th>Outstanding</th><th>Action</th></tr></thead>
           <tbody id="t-customers"></tbody></table></div>
         </div>
       </div>
@@ -366,6 +366,21 @@ button, .nav-item, .role-btn, .mob-nav-item, .btn, select {
     <div class="fr"><label>Phone</label><input id="nc-phone" type="text"/></div>
     <div class="fr"><label>Email</label><input id="nc-email" type="email"/></div>
     <div class="ma"><button class="btn btn-out" onclick="closeM('add-customer')">Cancel</button><button class="btn btn-gold" onclick="addCustomer()">Add Customer</button></div>
+  </div>
+</div>
+
+<div class="modal-bg" id="m-edit-customer">
+  <div class="modal">
+    <h3>Edit Customer</h3>
+    <input type="hidden" id="ec-id"/>
+    <div class="fr"><label>Full Name</label><input id="ec-name" type="text"/></div>
+    <div class="fg">
+      <div class="fr"><label>Tower No</label><input id="ec-tower" type="text" placeholder="e.g. A, B, C"/></div>
+      <div class="fr"><label>Flat No</label><input id="ec-flat" type="text" placeholder="e.g. 101, 304"/></div>
+    </div>
+    <div class="fr"><label>Phone</label><input id="ec-phone" type="text"/></div>
+    <div class="fr"><label>Email</label><input id="ec-email" type="email"/></div>
+    <div class="ma"><button class="btn btn-out" onclick="closeM('edit-customer')">Cancel</button><button class="btn btn-gold" onclick="saveCustomer()">Save Changes</button></div>
   </div>
 </div>
 
@@ -701,9 +716,12 @@ function rCusts() {
     const oc=S.orders.filter(o=>o.custId===c.id);
     tb+=billed;tp+=paid;if(due>0)cd++;
     const ds=due>0?'color:#e74c3c;font-weight:600':'color:#2ecc71';
-    return `<tr><td><strong>${c.name}</strong></td><td>${c.towerNo||'—'}</td><td>${c.flatNo||'—'}</td>
+    return `<tr>
+      <td><strong>${c.name}</strong></td><td>${c.towerNo||'—'}</td><td>${c.flatNo||'—'}</td>
       <td>${c.phone||'—'}</td><td>${c.email||'—'}</td><td>${oc.length}</td>
-      <td>${inr(billed)}</td><td style="color:#2ecc71">${inr(paid)}</td><td style="${ds}">${inr(due)}</td></tr>`;
+      <td>${inr(billed)}</td><td style="color:#2ecc71">${inr(paid)}</td><td style="${ds}">${inr(due)}</td>
+      <td><button class="btn btn-out" style="font-size:10px;padding:4px 10px;" onclick="openEditCustomer('${c.id}')">✏ Edit</button></td>
+    </tr>`;
   }).join('')||`<tr class="empty-row"><td colspan="9">No customers yet</td></tr>`;
   document.getElementById('t-customers').innerHTML=rows;
   document.getElementById('o-billed').textContent=inr(tb);
@@ -904,6 +922,40 @@ async function addCustomer() {
   busy(false);
 }
 window.addCustomer = addCustomer;
+
+function openEditCustomer(id) {
+  const cust = S.customers.find(x=>x.id===id);
+  if(!cust) return;
+  document.getElementById('ec-id').value    = cust.id;
+  document.getElementById('ec-name').value  = cust.name  || '';
+  document.getElementById('ec-tower').value = cust.towerNo || '';
+  document.getElementById('ec-flat').value  = cust.flatNo  || '';
+  document.getElementById('ec-phone').value = cust.phone || '';
+  document.getElementById('ec-email').value = cust.email || '';
+  document.getElementById('m-edit-customer').classList.add('open');
+}
+window.openEditCustomer = openEditCustomer;
+
+async function saveCustomer() {
+  const id      = document.getElementById('ec-id').value;
+  const name    = document.getElementById('ec-name').value.trim();
+  const towerNo = document.getElementById('ec-tower').value.trim();
+  const flatNo  = document.getElementById('ec-flat').value.trim();
+  const phone   = document.getElementById('ec-phone').value.trim();
+  const email   = document.getElementById('ec-email').value.trim();
+  if(!name){ toast('Name cannot be empty','err'); return; }
+  busy(true);
+  try {
+    await fsPatch('customers', id, {name, towerNo, flatNo, phone, email});
+    const local = S.customers.find(x=>x.id===id);
+    if(local) Object.assign(local, {name, towerNo, flatNo, phone, email});
+    document.getElementById('m-edit-customer').classList.remove('open');
+    renderCur();
+    toast('✓ Customer updated');
+  } catch(e){ toast(e.message,'err'); }
+  busy(false);
+}
+window.saveCustomer = saveCustomer;
 
 async function addOrder() {
   const custId=document.getElementById('no-cust').value;
