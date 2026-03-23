@@ -208,6 +208,22 @@ button, .nav-item, .role-btn, .mob-nav-item, .btn, select {
   main { padding-bottom: calc(80px + env(safe-area-inset-bottom)); }
 }
 
+
+/* ── SMART CUSTOMER SEARCH ─────────────────────────────────────── */
+.search-wrap{position:relative;}
+.search-wrap input{width:100%;padding:9px 11px;background:var(--surface2);border:1px solid var(--border);border-radius:3px;color:var(--text);font-family:'DM Sans',sans-serif;font-size:13px;outline:none;}
+.search-wrap input:focus{border-color:var(--gold);}
+.search-dropdown{position:absolute;top:100%;left:0;right:0;background:var(--surface);border:1px solid var(--gold);border-top:none;border-radius:0 0 4px 4px;z-index:300;max-height:200px;overflow-y:auto;display:none;}
+.search-dropdown.open{display:block;}
+.search-option{padding:10px 12px;cursor:pointer;font-size:13px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;transition:background .1s;}
+.search-option:last-child{border-bottom:none;}
+.search-option:hover,.search-option.highlighted{background:rgba(201,168,76,.1);}
+.search-option .s-name{font-weight:500;color:var(--text);}
+.search-option .s-addr{font-size:11px;color:var(--muted);}
+.search-selected{display:flex;align-items:center;justify-content:space-between;background:rgba(201,168,76,.08);border:1px solid var(--gold);border-radius:3px;padding:8px 11px;font-size:13px;}
+.search-selected .s-clear{background:none;border:none;color:var(--muted);cursor:pointer;font-size:16px;line-height:1;padding:0 2px;}
+.search-selected .s-clear:hover{color:#e74c3c;}
+
 </style>
 </head>
 <body>
@@ -388,7 +404,18 @@ button, .nav-item, .role-btn, .mob-nav-item, .btn, select {
   <div class="modal" style="width:520px;max-width:98vw;">
     <h3>New Order</h3>
     <div class="fg">
-      <div class="fr"><label>Customer</label><select id="no-cust"></select></div>
+      <div class="fr">
+        <label>Customer</label>
+        <input type="hidden" id="no-cust"/>
+        <div class="search-wrap" id="cust-search-wrap">
+          <input type="text" id="cust-search-input" placeholder="Type name, tower or flat…" autocomplete="off" oninput="filterCustomers()" onkeydown="custKeyNav(event)"/>
+          <div class="search-dropdown" id="cust-dropdown"></div>
+        </div>
+        <div class="search-selected" id="cust-selected" style="display:none;">
+          <span id="cust-selected-label"></span>
+          <button class="s-clear" type="button" onclick="clearCustSearch()" title="Change customer">✕</button>
+        </div>
+      </div>
       <div class="fr"><label>Order Date</label><input type="date" id="no-date"/></div>
     </div>
     <div style="margin-bottom:10px;">
@@ -957,6 +984,88 @@ async function saveCustomer() {
 }
 window.saveCustomer = saveCustomer;
 
+// ── Smart Customer Search ─────────────────────────────────────────
+let custHighlight = -1;
+
+function resetCustSearch() {
+  document.getElementById('no-cust').value = '';
+  document.getElementById('cust-search-input').value = '';
+  document.getElementById('cust-search-wrap').style.display = 'block';
+  document.getElementById('cust-selected').style.display = 'none';
+  document.getElementById('cust-dropdown').classList.remove('open');
+  document.getElementById('cust-dropdown').innerHTML = '';
+  custHighlight = -1;
+}
+
+function filterCustomers() {
+  const q = document.getElementById('cust-search-input').value.trim().toLowerCase();
+  const dd = document.getElementById('cust-dropdown');
+  if(!q){ dd.classList.remove('open'); dd.innerHTML=''; custHighlight=-1; return; }
+  const matches = S.customers.filter(c=>
+    c.name.toLowerCase().includes(q) ||
+    (c.towerNo||'').toLowerCase().includes(q) ||
+    (c.flatNo||'').toLowerCase().includes(q) ||
+    (c.phone||'').includes(q)
+  );
+  if(matches.length===0){
+    dd.innerHTML=`<div class="search-option" style="color:var(--muted);cursor:default;">No customers found</div>`;
+    dd.classList.add('open'); custHighlight=-1; return;
+  }
+  dd.innerHTML = matches.map((c,i)=>
+    `<div class="search-option" data-id="${c.id}" data-idx="${i}" onmousedown="selectCust('${c.id}')">
+      <span class="s-name">${highlight(c.name, q)}</span>
+      <span class="s-addr">T${c.towerNo||'?'} · F${c.flatNo||'?'}</span>
+    </div>`
+  ).join('');
+  dd.classList.add('open'); custHighlight=-1;
+}
+
+function highlight(text, q) {
+  const i = text.toLowerCase().indexOf(q);
+  if(i<0) return text;
+  return text.slice(0,i)+'<mark style="background:rgba(201,168,76,.3);color:var(--gold);border-radius:2px;">'+text.slice(i,i+q.length)+'</mark>'+text.slice(i+q.length);
+}
+
+function selectCust(id) {
+  const cust = S.customers.find(c=>c.id===id);
+  if(!cust) return;
+  document.getElementById('no-cust').value = id;
+  document.getElementById('cust-search-wrap').style.display = 'none';
+  document.getElementById('cust-selected').style.display = 'flex';
+  document.getElementById('cust-selected-label').textContent = cust.name + '  —  T' + (cust.towerNo||'?') + ' · F' + (cust.flatNo||'?');
+  document.getElementById('cust-dropdown').classList.remove('open');
+  custHighlight = -1;
+}
+window.selectCust = selectCust;
+
+function clearCustSearch() {
+  resetCustSearch();
+  document.getElementById('cust-search-input').focus();
+}
+window.clearCustSearch = clearCustSearch;
+window.filterCustomers = filterCustomers;
+
+function custKeyNav(e) {
+  const dd = document.getElementById('cust-dropdown');
+  const opts = dd.querySelectorAll('.search-option[data-id]');
+  if(!opts.length) return;
+  if(e.key==='ArrowDown'){ e.preventDefault(); custHighlight=Math.min(custHighlight+1,opts.length-1); }
+  else if(e.key==='ArrowUp'){ e.preventDefault(); custHighlight=Math.max(custHighlight-1,0); }
+  else if(e.key==='Enter' && custHighlight>=0){ e.preventDefault(); selectCust(opts[custHighlight].dataset.id); return; }
+  else if(e.key==='Escape'){ dd.classList.remove('open'); return; }
+  opts.forEach((o,i)=>o.classList.toggle('highlighted', i===custHighlight));
+  if(custHighlight>=0) opts[custHighlight].scrollIntoView({block:'nearest'});
+}
+window.custKeyNav = custKeyNav;
+
+// Close dropdown when clicking outside
+document.addEventListener('click', e=>{
+  if(!e.target.closest('#cust-search-wrap')) {
+    const dd=document.getElementById('cust-dropdown');
+    if(dd) dd.classList.remove('open');
+  }
+});
+
 async function addOrder() {
   const custId=document.getElementById('no-cust').value;
   const orderDate=document.getElementById('no-date').value||new Date().toISOString().split('T')[0];
@@ -1041,7 +1150,7 @@ function openM(name) {
     orderItems=[];
     const today=new Date().toISOString().split('T')[0];
     document.getElementById('no-date').value=today;
-    document.getElementById('no-cust').innerHTML=S.customers.map(c=>`<option value="${c.id}">${c.name} — T${c.towerNo||'?'} F${c.flatNo||'?'}</option>`).join('')||'<option>No customers yet</option>';
+    resetCustSearch();
     document.getElementById('no-prod').innerHTML=S.products.map(p=>`<option value="${p.id}">${p.name} — ${inr(p.price)} (stock:${p.stock||0})</option>`).join('')||'<option>No products yet</option>';
     refreshOrderItemsUI();
   }
