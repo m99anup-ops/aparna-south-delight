@@ -632,7 +632,16 @@ async function loadAll() {
     ]);
     S.products  = products;
     S.customers = customers;
-    S.orders    = orders.sort((a,b)=>(b.ts||0)-(a.ts||0));
+    S.orders    = orders.sort((a,b)=>{
+      // Parse DD/MM/YYYY date strings for comparison
+      function parseDate(d){ if(!d||!d.includes('/')) return 0; const [dd,mm,yy]=d.split('/'); return new Date(yy,mm-1,dd).getTime(); }
+      const dateDiff = parseDate(b.date) - parseDate(a.date);
+      if(dateDiff!==0) return dateDiff;
+      // Tiebreak by order number e.g. ORD-003 vs ORD-001
+      const aNum = parseInt((a.orderNum||'').replace(/[^0-9]/g,'')||0);
+      const bNum = parseInt((b.orderNum||'').replace(/[^0-9]/g,'')||0);
+      return bNum - aNum;
+    });
     S.payments  = payments.sort((a,b)=>(b.ts||0)-(a.ts||0));
     busy(false);
     renderCur();
