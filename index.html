@@ -305,6 +305,24 @@ button, .nav-item, .role-btn, .mob-nav-item, .btn, select {
         </div>
       </div>
 
+      <!-- CURRENT MONTH DASHBOARD -->
+      <div class="page" id="page-month">
+        <div class="page-title">Current Month Dashboard</div>
+        <div class="page-sub" id="month-sub">Overview for this month</div>
+        <div class="stats-row">
+          <div class="stat-card"><div class="stat-label">Orders This Month</div><div class="stat-value" id="m-ord">—</div></div>
+          <div class="stat-card"><div class="stat-label">Revenue Collected</div><div class="stat-value gold" id="m-rev">—</div></div>
+          <div class="stat-card"><div class="stat-label">Outstanding</div><div class="stat-value" style="color:#e74c3c" id="m-out">—</div></div>
+          <div class="stat-card"><div class="stat-label">Customers Served</div><div class="stat-value" id="m-cust">—</div></div>
+          <div class="stat-card"><div class="stat-label">New Customers</div><div class="stat-value" id="m-newcust">—</div></div>
+        </div>
+        <div class="card">
+          <div class="card-header"><div class="card-title">Orders This Month</div></div>
+          <div class="table-wrap"><table><thead><tr><th>Order ID</th><th>Date</th><th>Customer</th><th>Tower</th><th>Flat</th><th>Items</th><th>Amount</th><th>Status</th></tr></thead>
+          <tbody id="m-orders"></tbody></table></div>
+        </div>
+      </div>
+
       <!-- PRODUCTS -->
       <div class="page" id="page-products">
         <div class="page-title">Products & Inventory</div>
@@ -404,6 +422,20 @@ button, .nav-item, .role-btn, .mob-nav-item, .btn, select {
   </div>
 </div>
 
+<div class="modal-bg" id="m-edit-product">
+  <div class="modal">
+    <h3>Edit Product</h3>
+    <input type="hidden" id="ep-id"/>
+    <div class="fr"><label>Product Name</label><input id="ep-name" type="text"/></div>
+    <div class="fr"><label>Category</label><input id="ep-cat" type="text"/></div>
+    <div class="fg">
+      <div class="fr"><label>Price (₹)</label><input id="ep-price" type="number"/></div>
+      <div class="fr"><label>Stock Quantity</label><input id="ep-stock" type="number"/></div>
+    </div>
+    <div class="ma"><button class="btn btn-out" onclick="closeM('edit-product')">Cancel</button><button class="btn btn-gold" onclick="saveProduct()">Save Changes</button></div>
+  </div>
+</div>
+
 <div class="modal-bg" id="m-add-customer">
   <div class="modal">
     <h3>Add Customer</h3>
@@ -472,7 +504,7 @@ button, .nav-item, .role-btn, .mob-nav-item, .btn, select {
 <!-- MOBILE BOTTOM NAV -->
 <div id="mobile-nav">
   <button class="mob-nav-item" id="mn-dashboard" onclick="navigate('dashboard')"><span class="mob-nav-icon">◈</span>Dash</button>
-  <button class="mob-nav-item" id="mn-products" onclick="navigate('products')"><span class="mob-nav-icon">▣</span>Products</button>
+  <button class="mob-nav-item" id="mn-month" onclick="navigate('month')"><span class="mob-nav-icon">◉</span>Month</button>
   <button class="mob-nav-item" id="mn-orders" onclick="navigate('orders')"><span class="mob-nav-icon">◫</span>Orders</button>
   <button class="mob-nav-item" id="mn-customers" onclick="navigate('customers')"><span class="mob-nav-icon">◉</span>Customers</button>
   <button class="mob-nav-item" id="mn-payments" onclick="navigate('payments')"><span class="mob-nav-icon">◆</span>Payments</button>
@@ -693,7 +725,7 @@ async function reload() {
 // ─ Nav ───────────────────────────────────────────────────────────
 function buildNav() {
   const items = S.role==='owner'
-    ? [{id:'dashboard',ic:'◈',lb:'Dashboard'},{id:'products',ic:'▣',lb:'Products & Inventory'},{id:'orders',ic:'◫',lb:'Orders'},{id:'customers',ic:'◉',lb:'Customers'},{id:'payments',ic:'◆',lb:'Record Payment'}]
+    ? [{id:'dashboard',ic:'◈',lb:'Dashboard'},{id:'month',ic:'◉',lb:'Current Month'},{id:'products',ic:'▣',lb:'Products & Inventory'},{id:'orders',ic:'◫',lb:'Orders'},{id:'customers',ic:'◉',lb:'Customers'},{id:'payments',ic:'◆',lb:'Record Payment'}]
     : [{id:'emp-orders',ic:'◫',lb:'Process Orders'},{id:'payments',ic:'◈',lb:'Record Payment'}];
   document.getElementById('sidenav').innerHTML =
     `<div class="nav-label">${S.role==='owner'?'Management':'My Tasks'}</div>`+
@@ -721,7 +753,7 @@ function navigate(pg) {
 window.navigate = navigate;
 
 function renderCur() {
-  const m={dashboard:rDash,products:rProds,orders:rOrds,customers:rCusts,'emp-orders':rEmpOrds,payments:rPays};
+  const m={dashboard:rDash,month:rMonth,products:rProds,orders:rOrds,customers:rCusts,'emp-orders':rEmpOrds,payments:rPays};
   if(m[curPage]) m[curPage]();
 }
 
@@ -741,16 +773,99 @@ function rDash() {
   }).join('')||`<tr class="empty-row"><td colspan="7">No orders yet</td></tr>`;
 }
 
+function rMonth() {
+  const now   = new Date();
+  const curM  = now.getMonth();   // 0-11
+  const curY  = now.getFullYear();
+  const monthName = now.toLocaleString('en-IN',{month:'long'});
+  document.getElementById('month-sub').textContent = `Overview for ${monthName} ${curY}`;
+
+  // Helper: parse DD/MM/YYYY date string
+  function parseOrdDate(d) {
+    if(!d||!d.includes('/')) return null;
+    const [dd,mm,yy] = d.split('/');
+    return new Date(parseInt(yy), parseInt(mm)-1, parseInt(dd));
+  }
+
+  // Helper: parse payment date stored as D/M/YYYY or DD/MM/YYYY
+  function parsePayDate(d) {
+    if(!d) return null;
+    const parts = d.split('/');
+    if(parts.length!==3) return null;
+    return new Date(parseInt(parts[2]), parseInt(parts[1])-1, parseInt(parts[0]));
+  }
+
+  // Filter orders for current month by their order date
+  const monthOrders = S.orders.filter(o=>{
+    const dt = parseOrdDate(o.date);
+    return dt && dt.getMonth()===curM && dt.getFullYear()===curY;
+  });
+
+  // Filter payments for current month
+  const monthPayments = S.payments.filter(p=>{
+    const dt = parsePayDate(p.date);
+    return dt && dt.getMonth()===curM && dt.getFullYear()===curY;
+  });
+
+  const billed  = monthOrders.reduce((a,o)=>a+(o.amount||0),0);
+  const rev     = monthPayments.reduce((a,p)=>a+(p.amount||0),0);
+
+  // Outstanding = billed this month minus payments received this month
+  const outstanding = Math.max(0, billed - rev);
+
+  // Unique customers who placed orders this month
+  const uniqueCusts = new Set(monthOrders.map(o=>o.custId));
+
+  // New customers added this month — use ts field (epoch ms)
+  const newCusts = S.customers.filter(cu=>{
+    if(!cu.ts) return false;
+    const dt = new Date(cu.ts);
+    return dt.getMonth()===curM && dt.getFullYear()===curY;
+  }).length;
+
+  document.getElementById('m-ord').textContent    = monthOrders.length;
+  document.getElementById('m-rev').textContent    = inr(rev);
+  document.getElementById('m-out').textContent    = inr(outstanding);
+  document.getElementById('m-cust').textContent   = uniqueCusts.size;
+  document.getElementById('m-newcust').textContent = newCusts;
+
+  document.getElementById('m-orders').innerHTML = monthOrders.length > 0
+    ? monthOrders.map(o=>{
+        const cu = gc(o.custId);
+        const itemsSummary = o.items
+          ? o.items.map(it=>`${it.name}×${it.qty}`).join(', ')
+          : (gp(o.prodId).name+(o.qty?` ×${o.qty}`:''));
+        return `<tr>
+          <td>${o.orderNum||'—'}</td>
+          <td>${o.date||'—'}</td>
+          <td>${cu.name}</td>
+          <td>${cu.towerNo||'—'}</td>
+          <td>${cu.flatNo||'—'}</td>
+          <td style="max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${itemsSummary}</td>
+          <td>${inr(o.amount)}</td>
+          <td>${sbadge(o.status)}</td>
+        </tr>`;
+      }).join('')
+    : `<tr class="empty-row"><td colspan="8">No orders this month yet</td></tr>`;
+}
+
 function rProds() {
   document.getElementById('t-products').innerHTML = S.products.map(p=>{
     const pct=Math.min(100,Math.round((p.stock||0)/50*100));
     const col=p.stock<=5?'#e74c3c':p.stock<=15?'#f39c12':'#2ecc71';
     const sc=p.stock<=5?'br':p.stock<=15?'by':'bg';
     const sl=p.stock<=5?'Low Stock':p.stock<=15?'Medium':'In Stock';
-    return `<tr><td><strong>${p.name}</strong></td><td>${p.category||'—'}</td><td>${inr(p.price)}</td>
+    return `<tr>
+      <td><strong>${p.name}</strong></td>
+      <td>${p.category||'—'}</td>
+      <td>${inr(p.price)}</td>
       <td><div class="sbar"><span>${p.stock}</span><div class="sbar-track"><div class="sbar-fill" style="width:${pct}%;background:${col}"></div></div></div></td>
       <td><span class="badge ${sc}">${sl}</span></td>
-      <td><button class="btn btn-out" onclick="editStock('${p.id}',${p.stock||0})">Edit Stock</button></td></tr>`;
+      <td style="white-space:nowrap">
+        <button class="btn btn-out" style="font-size:10px;padding:4px 10px;" onclick="openEditProduct('${p.id}')">✏ Edit</button>
+        <button class="btn btn-out" style="font-size:10px;padding:4px 8px;color:#e74c3c;margin-left:4px;" onclick="deleteProduct('${p.id}','${p.name}')">🗑</button>
+      </td>
+    </tr>`;
   }).join('')||`<tr class="empty-row"><td colspan="6">No products yet</td></tr>`;
 }
 
@@ -975,6 +1090,53 @@ function editStock(id, cur) {
   }
 }
 window.editStock = editStock;
+
+function openEditProduct(id) {
+  const p = S.products.find(x=>x.id===id);
+  if(!p) return;
+  document.getElementById('ep-id').value    = p.id;
+  document.getElementById('ep-name').value  = p.name  || '';
+  document.getElementById('ep-cat').value   = p.category || '';
+  document.getElementById('ep-price').value = p.price || '';
+  document.getElementById('ep-stock').value = p.stock || 0;
+  document.getElementById('m-edit-product').classList.add('open');
+}
+window.openEditProduct = openEditProduct;
+
+async function saveProduct() {
+  const id       = document.getElementById('ep-id').value;
+  const name     = document.getElementById('ep-name').value.trim();
+  const category = document.getElementById('ep-cat').value.trim();
+  const price    = parseFloat(document.getElementById('ep-price').value);
+  const stock    = parseInt(document.getElementById('ep-stock').value);
+  if(!name)        { toast('Product name cannot be empty','err'); return; }
+  if(isNaN(price)) { toast('Enter a valid price','err'); return; }
+  if(isNaN(stock)) { toast('Enter a valid stock quantity','err'); return; }
+  busy(true);
+  try {
+    await fsPatch('products', id, {name, category, price, stock});
+    const local = S.products.find(x=>x.id===id);
+    if(local) Object.assign(local, {name, category, price, stock});
+    document.getElementById('m-edit-product').classList.remove('open');
+    renderCur();
+    toast('✓ Product updated');
+  } catch(e) { toast(e.message,'err'); }
+  busy(false);
+}
+window.saveProduct = saveProduct;
+
+async function deleteProduct(id, name) {
+  if(!confirm(`Delete "${name}"? This cannot be undone.`)) return;
+  busy(true);
+  try {
+    await fsDelete('products', id);
+    S.products = S.products.filter(p=>p.id!==id);
+    renderCur();
+    toast('✓ Product deleted');
+  } catch(e) { toast(e.message,'err'); }
+  busy(false);
+}
+window.deleteProduct = deleteProduct;
 
 async function recPayment() {
   const ordId=document.getElementById('pay-ord').value;
@@ -1266,7 +1428,7 @@ function openM(name) {
     const today=new Date().toISOString().split('T')[0];
     document.getElementById('no-date').value=today;
     resetCustSearch();
-    document.getElementById('no-prod').innerHTML=S.products.map(p=>`<option value="${p.id}">${p.name} — ${inr(p.price)} (stock:${p.stock||0})</option>`).join('')||'<option>No products yet</option>';
+    document.getElementById('no-prod').innerHTML=[...S.products].sort((a,b)=>a.name.localeCompare(b.name)).map(p=>`<option value="${p.id}">${p.name} — ${inr(p.price)} (stock:${p.stock||0})</option>`).join('')||'<option>No products yet</option>';
     refreshOrderItemsUI();
   }
   document.getElementById('m-'+name).classList.add('open');
