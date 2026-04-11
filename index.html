@@ -537,11 +537,19 @@ const BASE    = `https://firestore.googleapis.com/v1/projects/${PROJECT}/databas
 
 // Firestore REST helpers
 async function fsGet(col) {
-  const r = await fetch(`${BASE}/${col}`);
-  if (!r.ok) throw new Error(`GET ${col} failed: ${r.status} ${r.statusText}`);
-  const j = await r.json();
-  if (!j.documents) return [];
-  return j.documents.map(fsDoc);
+  // Firestore REST API paginates at 300 docs by default.
+  // We loop through all pages using pageToken to get EVERY document.
+  let allDocs = [];
+  let pageToken = null;
+  do {
+    const url = `${BASE}/${col}?pageSize=300${pageToken ? '&pageToken=' + pageToken : ''}`;
+    const r = await fetch(url);
+    if (!r.ok) throw new Error(`GET ${col} failed: ${r.status} ${r.statusText}`);
+    const j = await r.json();
+    if (j.documents) allDocs = allDocs.concat(j.documents.map(fsDoc));
+    pageToken = j.nextPageToken || null;
+  } while (pageToken);
+  return allDocs;
 }
 
 async function fsAdd(col, data) {
