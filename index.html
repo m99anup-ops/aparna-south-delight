@@ -362,6 +362,20 @@ button, .nav-item, .role-btn, .mob-nav-item, .btn, select {
         <div class="page-sub">All customer orders</div>
         <div class="card">
           <div class="card-header"><div class="card-title">Order List</div><button class="btn btn-gold" onclick="openM('add-order')">+ New Order</button></div>
+          <div style="display:flex;align-items:center;gap:10px;padding:12px 16px;border-bottom:1px solid var(--border);flex-wrap:wrap;background:var(--surface2);">
+            <span style="font-size:11px;text-transform:uppercase;letter-spacing:1.5px;color:var(--muted);flex-shrink:0;">Export by date</span>
+            <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;flex:1;">
+              <div style="display:flex;align-items:center;gap:6px;">
+                <label style="font-size:11px;color:var(--muted);">From</label>
+                <input type="date" id="exp-from" style="padding:5px 8px;background:var(--surface);border:1px solid var(--border);border-radius:3px;color:var(--text);font-family:'DM Sans',sans-serif;font-size:12px;outline:none;"/>
+              </div>
+              <div style="display:flex;align-items:center;gap:6px;">
+                <label style="font-size:11px;color:var(--muted);">To</label>
+                <input type="date" id="exp-to" style="padding:5px 8px;background:var(--surface);border:1px solid var(--border);border-radius:3px;color:var(--text);font-family:'DM Sans',sans-serif;font-size:12px;outline:none;"/>
+              </div>
+              <button class="btn btn-gold" style="padding:6px 14px;" onclick="exportOrders()">⬇ Download Excel</button>
+            </div>
+          </div>
           <div class="table-wrap"><table><thead><tr><th>Order ID</th><th>Date</th><th>Customer</th><th>Tower</th><th>Flat</th><th>Items</th><th>Amount</th><th>Payment</th><th>Status</th><th>Status Action</th><th>Delete</th></tr></thead>
           <tbody id="t-orders"></tbody></table></div>
         </div>
@@ -1447,6 +1461,92 @@ function closeM(name){document.getElementById('m-'+name).classList.remove('open'
 window.closeM = closeM;
 
 document.querySelectorAll('.modal-bg').forEach(o=>o.addEventListener('click',e=>{if(e.target===o)o.classList.remove('open');}));
+
+// ── Export Orders to Excel ────────────────────────────────────────
+function exportOrders() {
+  const fromVal = document.getElementById('exp-from').value;
+  const toVal   = document.getElementById('exp-to').value;
+
+  if(!fromVal || !toVal) { toast('Please select both From and To dates', 'err'); return; }
+
+  // Parse input dates (yyyy-mm-dd)
+  const fromDate = new Date(fromVal);
+  const toDate   = new Date(toVal);
+  toDate.setHours(23,59,59,999); // include the full end day
+
+  if(fromDate > toDate) { toast('From date must be before To date', 'err'); return; }
+
+  // Parse order date DD/MM/YYYY
+  function parseOrdDate(d) {
+    if(!d||!d.includes('/')) return null;
+    const [dd,mm,yy] = d.split('/');
+    return new Date(parseInt(yy), parseInt(mm)-1, parseInt(dd));
+  }
+
+  const filtered = S.orders.filter(o => {
+    const dt = parseOrdDate(o.date);
+    return dt && dt >= fromDate && dt <= toDate;
+  });
+
+  if(filtered.length === 0) { toast('No orders found in this date range', 'err'); return; }
+
+  // Build rows — one row per item in each order
+  const headers = ['Order ID','Date','Customer Name','Tower No','Flat No','Phone','Item','Qty','Item Amount','Order Total','Payment Status','Order Status'];
+  const rows = [];
+
+  filtered.forEach(o => {
+    const cust  = gc(o.custId);
+    const items = o.items && o.items.length > 0
+      ? o.items
+      : [{name: gp(o.prodId).name, qty: o.qty||1, price: o.amount/(o.qty||1)}];
+
+    items.forEach((it, idx) => {
+      rows.push([
+        idx===0 ? (o.orderNum||'—') : '',          // Order ID only on first item row
+        idx===0 ? (o.date||'—') : '',               // Date only on first item row
+        idx===0 ? cust.name : '',
+        idx===0 ? (cust.towerNo||'') : '',
+        idx===0 ? (cust.flatNo||'') : '',
+        idx===0 ? (cust.phone||'') : '',
+        it.name||'',
+        it.qty||1,
+        (it.price||0)*(it.qty||1),
+        idx===0 ? (o.amount||0) : '',               // Order total only on first item row
+        idx===0 ? (o.payment||'') : '',
+        idx===0 ? (o.status||'') : '',
+      ]);
+    });
+  });
+
+  // Build worksheet
+  const wsData = [headers, ...rows];
+  const ws = XLSX.utils.aoa_to_sheet(wsData);
+
+  // Column widths
+  ws['!cols'] = [
+    {wch:10},{wch:12},{wch:20},{wch:10},{wch:10},{wch:14},
+    {wch:24},{wch:6},{wch:14},{wch:14},{wch:14},{wch:14}
+  ];
+
+  // Style header row bold (basic)
+  const range = XLSX.utils.decode_range(ws['!ref']);
+  for(let C = range.s.c; C <= range.e.c; C++) {
+    const cell = ws[XLSX.utils.encode_cell({r:0, c:C})];
+    if(cell) cell.s = {font:{bold:true}};
+  }
+
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Orders');
+
+  // Format filename: Orders_01-06-2025_to_30-06-2025.xlsx
+  const fmt = d => d.toLocaleDateString('en-IN').replace(/\//g,'-');
+  const filename = `Orders_${fmt(fromDate)}_to_${fmt(toDate)}.xlsx`;
+
+  XLSX.writeFile(wb, filename);
+  toast(`✓ Downloaded ${filtered.length} orders`);
+}
+window.exportOrders = exportOrders;
 </script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 </body>
 </html>
