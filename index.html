@@ -311,7 +311,7 @@ button, .nav-item, .role-btn, .mob-nav-item, .btn, select {
         <div class="page-sub" id="month-sub">Overview for this month</div>
         <div class="stats-row">
           <div class="stat-card"><div class="stat-label">Orders This Month</div><div class="stat-value" id="m-ord">—</div></div>
-          <div class="stat-card"><div class="stat-label">Revenue Collected</div><div class="stat-value gold" id="m-rev">—</div></div>
+          <div class="stat-card"><div class="stat-label">Order Total</div><div class="stat-value gold" id="m-rev">—</div></div>
           <div class="stat-card"><div class="stat-label">Outstanding</div><div class="stat-value" style="color:#e74c3c" id="m-out">—</div></div>
           <div class="stat-card"><div class="stat-label">Customers Served</div><div class="stat-value" id="m-cust">—</div></div>
           <div class="stat-card"><div class="stat-label">New Customers</div><div class="stat-value" id="m-newcust">—</div></div>
@@ -846,7 +846,7 @@ function rMonth() {
   }).length;
 
   document.getElementById('m-ord').textContent    = monthOrders.length;
-  document.getElementById('m-rev').textContent    = inr(rev);
+  document.getElementById('m-rev').textContent    = inr(billed);
   document.getElementById('m-out').textContent    = inr(outstanding);
   document.getElementById('m-cust').textContent   = uniqueCusts.size;
   document.getElementById('m-newcust').textContent = newCusts;
